@@ -291,9 +291,187 @@ void Pin_invierteEstado(HPin pin)
 }
 ```
 
+## 3. Temporizador
+
+El temporizador debe permitir una espera bloqueante (mediante un lazo de espera)
+de un número prescrito de milisegundos. El enunciado además indica utilizar el
+temporizador del sistema SysTick como referencia de tiempo. El temporizador del
+sistema es un contador descendente que puede configurarse para generar una
+interrupción periódica (ARM®v7-M Architecture Reference Manual, 2017, Sección B3.3). Las librerías CMSIS-Core para Cortex-M (CMSIS-Core, 2024) proveen
+funciones para la determinación de la frecuencia de reloj del sistema y para la
+configuración del timer del sistema. En particular en (CMSIS-Core, 2024, API
+Reference/Systick Timer) hay un ejemplo mínimo de configuración del timer,
+incluyendo la rutina de servicio de interrupción para mantener un contador de
+milisegundos. Utilizamos ese ejemplo como guía para implementar nuestra función
+de temporización.
+
+### 3.1. Interfaz abstracta
+
+Implementamos una interfaz mínima que contempla una función de inicialización,
+una función para obtener el valor de una cuenta de milisegundos actual como
+entero sin signo y una función para generar un retardo bloqueante (detiene el
+flujo del programa) de una cantidad prescrita de milisegundos. El entero sin
+signo en formato binario natural tiene comportamiento módulo $2^{32}$, lo que
+permite calcular el tiempo transcurrido como $T_f-T_i$, donde $T_f$ y $T_i$ son
+los valores final e inicial del contador, sin que el cálculo sea afectado por
+el desborde de la cuenta. El Listado 3.1 muestra la interfaz abstracta diseñada.
+No hemos determinado un *handle* explícito porque en el contexto de este
+práctico no contemplamos el uso de otros temporizadores distintos al
+temporizador del sistema. En caso de que deba utilizarse un *handle* explícito,
+todas las funciones tendrían como primer argumento dicho *handle*. Se utiliza el
+un tipo definido por el usuario para permitir flexibilidad en la elección del
+tipo subyacente al cambiar de arquitectura.
+
+Listado 3.1. Interfaz abstracta para el temporizador
+
+```c
+typedef uint32_t Milisegundos;
+
+/**
+ * @brief Configura el temporizador del sistema. Es necesario llamar a esta
+ * rutina antes de cualquier otra función del temporizador.
+ * 
+ */
+void Temporizador_inicializa(void);
+
+/**
+ * @brief Obtiene la cuenta actual de milisegundos.
+ * @note Debe inicializarse el temporizador con Temporizador_incializa antes de
+ * usar esta función
+ * @return Milisegundos Valor de la cuenta (en milisegundos) 
+ */
+Milisegundos Temporizador_obtCuenta(void);
+
+/**
+ * @brief Bloquea la ejecución del programa durante el tiempo indicado
+ * @note Debe inicializarse el temporizador con Temporizador_incializa antes de
+ * usar esta función
+ * @param tiempo Tiempo en milisegundos
+ */
+void Temporizador_espera(Milisegundos tiempo);
+
+```
+
+### 3.2. Inicialización
+
+Es necesario inicializar el temporizador del sistema antes de poder ejecutar
+las funciones que de él dependen. La función de inicialización provista por la
+librería CMSIS acepta como parámetro la cantidad de cuentas entre
+interrupciones. Para configurar una interrupción periódica determinamos la
+frecuencia de reloj y calculamos el número de ciclos necesarios para completar
+un milisegundo, $N=\dfrac{f_\mathrm{ck}}{1000}$ donde la $f_\mathrm{ck}$ es la
+frecuencia de reloj en Hertz. La frecuencia de reloj está disponible en la
+variable `SystemCoreClock` que es inicializada por la función
+`SystemCoreClockUpdate`, y ARM recomienda llamar dicha función antes de usar la
+variable (CMSIS-Core, 2024, API Reference/System and Clock Configuration/
+SystemCoreClock). El Listado 3.2. muestra la rutina de inicialización del
+temporizador del sistema realizada en base a la documentación de CMSIS. La
+rutina de inicialización habilita la interrupción de SysTick, por lo tanto es
+necesario asegurarse que esté presente la rutina de servicio de interrupción
+`SysTick_Handler` (de lo contrario el handler por defecto es un lazo infinito).
+
+Listado 3.2. Inicialización del temporizador
+
+```c
+void Temporizador_inicializa(void)
+{
+    SystemCoreClockUpdate();
+
+    const uint32_t ciclosPorMilisegundo = SystemCoreClock/1000;
+
+    SysTick_Config(ciclosPorMilisegundo);
+}
+```
+
+### 3.3. Rutina de servicio de interrupción
+
+La rutina de servicio de interrupción será ejecutada una vez por milisegundo por
+el timer del sistema. En ella actualizamos una variable contador de milisegundos
+de tipo entero sin signo de 32 bit que corre en forma libre. Mantenemos la cuenta en una variable calificada *volatile*, lo que garantiza que su valor es
+leido en cada uso de la variable en lugar de mantenerse en un registro como
+optimización. Esto es necesario siempre que una variable puede ser modificada
+por algún proceso externo al programa principal, tal como una rutina de
+servicio de interrupción.
+
+> *Nota*: la variable *volatile* no garantiza consistencia en caso de carrera
+de datos. Sin embargo aquí existe un único punto en que puede ser modificada
+dicha variable. Esta garantía es fuerte debido al enlace interno (especificador
+*static*) de la variable y que el acceso a la misma desde fuera es posible solo
+a través de las funciones provistas.
+
+El Listado 3.3. muestra nuestra implementación de rutina de servicio de interrupción.
+
+Listado 3.3. Rutina de servicio de interrupción y variable de cuenta de
+milisegundos
+
+```c
+static volatile Milisegundos cuenta;
+
+void SysTick_Handler(void)
+{
+    ++cuenta;
+}
+```
+
+### 3.4 Espera y obtención de la cuenta de milisegundos
+
+El valor del contador de milisegundos solo es accesible mediante la función `Temporizador_obtCuenta`, esto previene que el código cliente altere el
+contador, lo que podría resultar en una carrera de datos. La rutina de espera
+admite como parámetro un tiempo en milisegundos y retorna control al programa
+solo luego de que haya transcurrido dicho tiempo. No retorna valor puesto que
+fue diseñada para emplearse por su efecto secundario únicamente. El Listado 3.4
+muestra la implementación de estas funciones.
+
+> *Nota*: La función `Temporizador_espera` no funcionaría si *cuenta* no fuese
+calificada *volatile*, puesto que en ese caso su valor sería cargado en un
+registro al principio y nunca más se leería desde memoria (operaría sobre su
+propia copia de la variable, que no responde a cambios en el original).
+
+Listado 3.4. Funciones para obtener cuenta y esperar
+
+```c
+Milisegundos Temporizador_obtCuenta(void)
+{
+    return cuenta;
+}
+
+void Temporizador_espera(Milisegundos tiempo)
+{
+    const Milisegundos inicial = cuenta;
+    while(cuenta - inicial < tiempo);
+}
+```
+
+## 4. Programa principal
+
+El programa principal implementado utilizando la capa de abstracción de hardware
+desarrollada se muestra en el Listado 4.1. Simplemente leer el código permite
+imaginar *que* hace, pero no *como* lo hace. Esta es la característica principal
+de una interfaz abstracta.
+
+Listado 4.1. Programa principal
+
+```c
+#include "hal.h"
+
+int main(void)
+{
+    Temporizador_inicializa();
+    Pin_ponModoSalida(Pin_LED);
+    Pin_ponEstadoAlto(Pin_LED);
+    for(;;){
+        Temporizador_espera(500);
+        Pin_invierteEstado(Pin_LED);
+    }
+    return 0;
+}
+```
+
 ## Referencias
 
+- *ARM®v7-M Architecture Reference Manual*. (19 de mayo de 2017) ARM Limited.
 - *Array initialization*. (16 de octubre de 2022) cppreference.com. Accedido el 10/05/2024 en <https://en.cppreference.com/w/c/language/array_initialization>
+- *CMSIS-Core*. (8 de mayo de 2024) ARM Limited. Accedido el 10/05/2024 en <https://arm-software.github.io/CMSIS_6/latest/Core/index.html>
 - *Condición de carrera*. (2 de febrero de 2022) Wikipedia. Accedido el 10/05/2024 en <https://es.wikipedia.org/wiki/Condici%C3%B3n_de_carrera>
 - *Handle* (29 de octubre de 2021) Wikipedia, Wikimedia Foundation. Accedido el 10/5/2024 en <https://es.wikipedia.org/wiki/Handle>
 - *Hoja de datos STM32F103x* (agosto 2015) ST.

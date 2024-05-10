@@ -1,6 +1,7 @@
 #ifndef HAL_H
 #define HAL_H
 #include <stdbool.h>
+#include <stdint.h>
 
 /* GPIO */
 
@@ -49,5 +50,32 @@ bool Pin_consultaEstado(HPin pin);
  * @param pin el pin
  */
 void Pin_invierteEstado(HPin pin);
+
+/* Temporizador */
+
+typedef uint32_t Milisegundos;
+
+/**
+ * @brief Configura el temporizador del sistema. Es necesario llamar a esta
+ * rutina antes de cualquier otra función del temporizador.
+ * 
+ */
+void Temporizador_inicializa(void);
+
+/**
+ * @brief Obtiene la cuenta actual de milisegundos.
+ * @note Debe inicializarse el temporizador con Temporizador_incializa antes de
+ * usar esta función
+ * @return Milisegundos Valor de la cuenta (en milisegundos) 
+ */
+Milisegundos Temporizador_obtCuenta(void);
+
+/**
+ * @brief Bloquea la ejecución del programa durante el tiempo indicado
+ * @note Debe inicializarse el temporizador con Temporizador_incializa antes de
+ * usar esta función
+ * @param tiempo Tiempo en milisegundos
+ */
+void Temporizador_espera(Milisegundos tiempo);
 
 #endif
