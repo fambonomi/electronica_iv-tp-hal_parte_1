@@ -2,9 +2,11 @@
 
 int main(void)
 {
-    /* Añade aquí el código de configuración */
+    Pin_ponModoSalida(Pin_LED);
 
-    /* Añade aquí el lazo principal */
+    Pin_ponEstadoBajo(Pin_LED);
+
+    for(;;){}
 
     return 0;
 }
