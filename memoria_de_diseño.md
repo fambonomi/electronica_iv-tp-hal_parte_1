@@ -107,4 +107,5 @@ void Pin_invierteEstado(HPin pin);
 - *RM0008* (febrero 2021) ST.
 - *Hoja de datos STM32F103x* (agosto 2015) ST.
 - *Handle* (29 de octubre de 2021) Wikipedia, Wikimedia Foundation. Accedido el 10/5/2024 en <https://es.wikipedia.org/wiki/Handle>
+
 [fig-1]: figuras/pinout-bluepill.jpg

@@ -3,7 +3,7 @@
 int main(void)
 {
     Pin_ponModoSalida(Pin_LED);
-
+    Pin_ponEstadoAlto(Pin_LED);
     Pin_ponEstadoBajo(Pin_LED);
 
     for(;;){}

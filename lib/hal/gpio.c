@@ -45,7 +45,7 @@ void Pin_ponModoSalida(HPin pin)
 {
     enum{MODO_SALIDA = 0b0010};
     if (pin >= Pin_NUM_HANDLES) return;
-    const Pin *desc = descriptores+pin;
+    const Pin *desc = descriptores+pin; // &descriptores[pin]
 
     desc->habilitaReloj();
 
